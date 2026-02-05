@@ -1,0 +1,28 @@
+carousell:
+  queries:
+    - "x399"
+    - "threadripper motherboard"
+    - "ASUS Zenith Extreme"
+    - "ASRock Taichi X399"
+  filters:
+    max_price_sgd: 1500
+    exclude_keywords:
+      - "for parts"
+      - "not working"
+      - "dead"
+
+ebay:
+  queries:
+    - "ASUS ROG Zenith Extreme X399"
+    - "Gigabyte X399 Aorus Xtreme"
+  filters:
+    max_price_usd: 500
+    condition:
+      - "Used"
+      - "New other"
+    ships_to: "SG"
+
+slickdeals:
+  queries:
+    - "x399"
+    - "threadripper"

@@ -1,0 +1,56 @@
+name: X399 Hunter-Seeker
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:        # Manual trigger via GitHub UI
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed to push JSON data back
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for price analysis
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium --with-deps
+
+      - name: Run Carousell scraper
+        env:
+          PROXY_URL: ${{ secrets.PROXY_URL }}
+        run: |
+          # The scraper script handles proxy parsing internally
+          python scrapers/carousell.py --config config/targets.yaml \
+            --output data/carousell/$(date +%Y-%m-%d_%H-%M).json
+
+      - name: Analyze pricing (Z-score)
+        run: |
+          python analytics/zscore.py \
+            --data-dir data/ \
+            --lookback-days 30 \
+            --output alerts/deals.json
+
+      - name: Send Discord alerts
+        if: success()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          python alerts/discord.py --input alerts/deals.json
+
+      - name: Commit new data
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add data/
+          # Only commit if there are changes
+          git diff --quiet && git diff --staged --quiet || (git commit -m "📊 Hunt results: $(date +%Y-%m-%d_%H-%M)" && git push)
