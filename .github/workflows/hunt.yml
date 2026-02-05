@@ -3,6 +3,11 @@ on:
   schedule:
     - cron: '0 */6 * * *'  # Every 6 hours
   workflow_dispatch:        # Manual trigger via GitHub UI
+    inputs:
+      debug_mode:
+        description: 'Enable verbose logging'
+        required: false
+        default: 'false'
 
 jobs:
   hunt:
@@ -47,10 +52,29 @@ jobs:
         run: |
           python alerts/discord.py --input alerts/deals.json
 
-      - name: Commit new data
+      - name: Save Raw Scrape Data (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-data-run-${{ github.run_number }}
+          path: data/
+          retention-days: 30
+
+      - name: Commit Analysis Results Only
         run: |
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
-          git add data/
-          # Only commit if there are changes
-          git diff --quiet && git diff --staged --quiet || (git commit -m "📊 Hunt results: $(date +%Y-%m-%d_%H-%M)" && git push)
+          git add alerts/deals.json
+          # Only commit if there are deals found
+          git diff --quiet && git diff --staged --quiet || (git commit -m "📊 Deals Found: $(date +%Y-%m-%d_%H-%M)" && git push)
+
+      - name: Weekly Backup to Git LFS
+        if: github.event.schedule == '0 0 * * 0'
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          # Archive all JSONs currently in data/
+          tar -czf data_archive/weekly-$(date +%Y-%m-%d).tar.gz data/
+          git lfs track "*.tar.gz"
+          git add .gitattributes data_archive/
+          git commit -m "📦 Weekly Data Backup"
+          git push
