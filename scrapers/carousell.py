@@ -218,9 +218,9 @@ async def main_async():
     for query in config['carousell']['queries']:
         try:
             # Try Primary
-            # results = await scrape_playwright(query, proxy_config)
-            # all_results.extend(results)
-            raise Exception("Force backup for testing")
+            results = await scrape_playwright(query, proxy_config)
+            all_results.extend(results)
+            # raise Exception("Force backup for testing")
         except Exception as e:
             print(f"⚠️ Primary scraper failed for '{query}'. Attempting backup...")
             # Try Backup (run sync in executor if needed, or just call direct)
