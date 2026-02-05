@@ -156,11 +156,15 @@ def scrape_curl_cffi(search_query, proxy_url=None, max_results=50):
     proxies = {"https": proxy_url, "http": proxy_url} if proxy_url else None
     
     try:
-        # Impersonate Chrome 110
+        # Impersonate Chrome 120 (newer) and add headers
         response = crequests.get(
             url,
-            impersonate="chrome110",
+            impersonate="chrome120",
             proxies=proxies,
+            headers={
+                "Referer": "https://www.google.com/",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
             timeout=30
         )
         
@@ -214,8 +218,9 @@ async def main_async():
     for query in config['carousell']['queries']:
         try:
             # Try Primary
-            results = await scrape_playwright(query, proxy_config)
-            all_results.extend(results)
+            # results = await scrape_playwright(query, proxy_config)
+            # all_results.extend(results)
+            raise Exception("Force backup for testing")
         except Exception as e:
             print(f"⚠️ Primary scraper failed for '{query}'. Attempting backup...")
             # Try Backup (run sync in executor if needed, or just call direct)
