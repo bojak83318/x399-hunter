@@ -31,8 +31,9 @@ jobs:
           script: |
             set -e
             
-            # Ensure repo exists
-            if [ ! -d "/opt/x399-hunter" ]; then
+            # Ensure repo exists (clone if missing or not a git repo)
+            if [ ! -d "/opt/x399-hunter/.git" ]; then
+              rm -rf /opt/x399-hunter
               git clone https://github.com/${{ github.repository }} /opt/x399-hunter
             fi
             
