@@ -1,80 +1,56 @@
-name: X399 Hunter-Seeker (v2)
+name: X399 Hunter (VPS)
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
-  workflow_dispatch:        # Manual trigger via GitHub UI
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
     inputs:
-      debug_mode:
-        description: 'Enable verbose logging'
+      debug:
+        description: 'Enable debug mode'
         required: false
         default: 'false'
 
 jobs:
-  hunt:
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write  # Needed to push JSON data back
+  deploy-and-run:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for price analysis
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install chromium --with-deps
-
-      - name: Run Carousell scraper
-        env:
-          PROXY_URL: ${{ secrets.PROXY_URL }}
-        run: |
-          # The scraper script handles proxy parsing internally
-          python scrapers/carousell.py --config config/targets.yaml \
-            --output data/carousell/$(date +%Y-%m-%d_%H-%M).json
-
-      - name: Analyze pricing (Z-score)
-        run: |
-          python analytics/zscore.py \
-            --data-dir data/ \
-            --lookback-days 30 \
-            --output alerts/deals.json
-
-      - name: Send Discord alerts
-        if: success()
+      
+      - name: Execute scraper on VPS
+        uses: appleboy/ssh-action@v1.0.3
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: |
-          python alerts/discord.py --input alerts/deals.json
-
-      - name: Save Raw Scrape Data (Artifacts)
-        uses: actions/upload-artifact@v4
+          PROXY_URL: ${{ secrets.PROXY_URL }}
         with:
-          name: raw-data-run-${{ github.run_number }}
-          path: data/
-          retention-days: 30
-
-      - name: Commit Analysis Results Only
-        run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
-          git add alerts/deals.json
-          # Only commit if there are deals found
-          git diff --quiet && git diff --staged --quiet || (git commit -m "📊 Deals Found: $(date +%Y-%m-%d_%H-%M)" && git push)
-
-      - name: Weekly Backup to Git LFS
-        if: github.event.schedule == '0 0 * * 0'
-        run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
-          # Archive all JSONs currently in data/
-          tar -czf data_archive/weekly-$(date +%Y-%m-%d).tar.gz data/
-          git lfs track "*.tar.gz"
-          git add .gitattributes data_archive/
-          git commit -m "📦 Weekly Data Backup"
-          git push
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          envs: DISCORD_WEBHOOK,PROXY_URL
+          script_stop: true
+          script: |
+            set -e
+            
+            # Ensure repo exists
+            if [ ! -d "/opt/x399-hunter" ]; then
+              git clone https://github.com/${{ github.repository }} /opt/x399-hunter
+            fi
+            
+            cd /opt/x399-hunter
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Run in ephemeral container
+            docker run --rm \
+              --name x399-hunter-${{ github.run_id }} \
+              -v $(pwd):/app \
+              -w /app \
+              -e DISCORD_WEBHOOK="${DISCORD_WEBHOOK}" \
+              -e PROXY_URL="${PROXY_URL}" \
+              python:3.11-slim \
+              bash -c '
+                pip install --no-cache-dir -q -r requirements.txt
+                python scrapers/carousell.py --output /app/data/carousell-$(date +%Y-%m-%d_%H-%M).json
+                python analytics/zscore.py --data-dir /app/data --lookback-days 30 --output /app/alerts/deals.json
+                python alerts/discord.py --input /app/alerts/deals.json
+              '
