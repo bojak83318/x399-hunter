@@ -1,0 +1,60 @@
+name: X399 Hunter (VPS)
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Enable debug mode'
+        required: false
+        default: 'false'
+
+jobs:
+  deploy-and-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Execute scraper on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          PROXY_URL: ${{ secrets.PROXY_URL }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          envs: DISCORD_WEBHOOK,PROXY_URL
+          script_stop: true  # Stop on first error
+          script: |
+            set -e  # Exit on error
+            
+            # Pull latest code
+            if [ ! -d "/opt/x399-hunter" ]; then
+              git clone https://github.com/${{ github.repository }} /opt/x399-hunter
+            fi
+            
+            cd /opt/x399-hunter
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Run in ephemeral container
+            docker run --rm \
+              --name x399-hunter-${{ github.run_id }} \
+              -v $(pwd):/app \
+              -w /app \
+              -e DISCORD_WEBHOOK="${DISCORD_WEBHOOK}" \
+              -e PROXY_URL="${PROXY_URL}" \
+              python:3.11-slim \
+              bash -c '
+                pip install --no-cache-dir -q -r requirements.txt
+                python scrapers/carousell.py --output /app/data/carousell-$(date +%Y-%m-%d_%H-%M).json
+                python analytics/zscore.py --data-dir /app/data --lookback-days 30 --output /app/alerts/deals.json
+                python alerts/discord.py --input /app/alerts/deals.json
+              '
+            
+            # Commit results (optional - requires GH_TOKEN on VPS or SSH key with write access)
+            # For simplicity in this step, we are just running the scraper.
+            # Data persistence to git would need the VPS to authenticate back to GitHub.
