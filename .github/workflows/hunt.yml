@@ -31,13 +31,15 @@ jobs:
           script: |
             set -e
             
+            PROJECT_DIR=~/x399-hunter
+            
             # Ensure repo exists (clone if missing or not a git repo)
-            if [ ! -d "/opt/x399-hunter/.git" ]; then
-              rm -rf /opt/x399-hunter
-              git clone https://github.com/${{ github.repository }} /opt/x399-hunter
+            if [ ! -d "$PROJECT_DIR/.git" ]; then
+              rm -rf "$PROJECT_DIR"
+              git clone https://github.com/${{ github.repository }} "$PROJECT_DIR"
             fi
             
-            cd /opt/x399-hunter
+            cd "$PROJECT_DIR"
             git fetch origin
             git reset --hard origin/main
             
